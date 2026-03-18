@@ -1,9 +1,12 @@
 """
 YUSO Dashboard - Servidor Flask com dashboard integrado
+Histórico real por mês via API do Mercado Livre
 """
 
 from flask import Flask, redirect, request, jsonify, session, Response
 import requests, json, os, secrets, hashlib, base64
+from datetime import datetime, timedelta
+from calendar import monthrange
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "yuso-secret-key-2024-xK9mP")
@@ -33,7 +36,10 @@ def load_token():
     return None
 
 def refresh_token_data(t):
-    r = requests.post(ML_TOKEN_URL, data={"grant_type":"refresh_token","client_id":CLIENT_ID,"client_secret":CLIENT_SECRET,"refresh_token":t["refresh_token"]})
+    r = requests.post(ML_TOKEN_URL, data={
+        "grant_type":"refresh_token","client_id":CLIENT_ID,
+        "client_secret":CLIENT_SECRET,"refresh_token":t["refresh_token"]
+    })
     if r.status_code == 200:
         nt = r.json(); save_token(nt); return nt
     return None
@@ -64,7 +70,6 @@ HTML = r"""<!DOCTYPE html>
 :root{--acc:#E87722;--acc-l:#FFF3E8;--td:#1A1A1A;--tm:#555;--tl:#888;--bg:#F5F6FA;--card:#fff;--bdr:#E8E8E8;--grn:#27AE60;--amb:#F39C12;--red:#E74C3C;--blu:#2980B9;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--td);display:flex;height:100vh;overflow:hidden;}
-/* SIDEBAR */
 .sb{width:220px;background:#fff;border-right:1.5px solid var(--bdr);display:flex;flex-direction:column;height:100vh;overflow-y:auto;flex-shrink:0;}
 .logo{padding:24px 20px 16px;border-bottom:1px solid var(--bdr);}
 .logo-t{font-size:22px;font-weight:800;color:var(--acc);letter-spacing:2px;}
@@ -76,7 +81,6 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sf{padding:14px 20px;border-top:1px solid var(--bdr);font-size:11px;color:var(--tl);margin-top:auto;}
 .dot{width:8px;height:8px;border-radius:50%;background:#ccc;display:inline-block;margin-right:5px;}
 .dot.on{background:var(--grn);}
-/* MAIN */
 .main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
 .tb{background:#fff;border-bottom:1px solid var(--bdr);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .tb-t{font-size:18px;font-weight:700;}
@@ -86,19 +90,16 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .bdg.grn{background:#E8F8F0;color:var(--grn);}
 .bdg.red{background:#FDEDEC;color:var(--red);}
 .cnt{padding:24px 28px;flex:1;}
-/* CARDS */
 .cr{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;}
 .card{background:var(--card);border-radius:12px;border:1px solid var(--bdr);padding:20px;flex:1;min-width:150px;}
 .cl{font-size:11px;color:var(--tl);font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
 .cv{font-size:24px;font-weight:800;margin:6px 0 2px;}
 .cc{font-size:12px;font-weight:600;color:var(--tl);}
 .cc.up{color:var(--grn);} .cc.dn{color:var(--red);}
-/* CHART CARDS */
 .chrow{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;}
 .cc2{background:var(--card);border-radius:12px;border:1px solid var(--bdr);padding:20px;}
 .ct{font-size:13px;font-weight:700;margin-bottom:4px;}
 .cs{font-size:11px;color:var(--tl);margin-bottom:12px;}
-/* TABLE */
 .tc{background:var(--card);border-radius:12px;border:1px solid var(--bdr);overflow:hidden;margin-bottom:20px;}
 .th{padding:14px 20px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;}
 .tt{font-size:13px;font-weight:700;}
@@ -107,12 +108,10 @@ th{font-size:11px;color:var(--tl);text-transform:uppercase;padding:10px 20px;tex
 td{font-size:13px;padding:11px 20px;border-bottom:1px solid var(--bdr);}
 tr:last-child td{border-bottom:none;}
 tr:hover td{background:#FAFBFF;}
-/* PILLS */
 .p{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;}
 .pg{background:#E8F8F0;color:var(--grn);} .pa{background:#FEF9E7;color:var(--amb);}
 .pr{background:#FDEDEC;color:var(--red);} .pb{background:#EAF4FB;color:var(--blu);}
 .py{background:#F2F2F2;color:var(--tl);}
-/* MISC */
 .page{display:none;} .page.active{display:block;}
 .pb2{background:#F0F0F0;border-radius:4px;height:8px;overflow:hidden;}
 .pf{height:100%;border-radius:4px;}
@@ -124,12 +123,10 @@ tr:hover td{background:#FAFBFF;}
 .bp{background:var(--acc);color:white;} .bp:hover{background:#c9600f;}
 .bo{background:white;color:var(--td);border:1.5px solid var(--bdr);text-decoration:none;display:inline-block;}
 .lod{text-align:center;color:var(--tl);padding:28px;font-size:13px;}
-.dw{position:relative;display:inline-flex;align-items:center;justify-content:center;}
-.dc{position:absolute;text-align:center;}
-.dc .db{font-size:19px;font-weight:800;}
-.dc .ds{font-size:10px;color:var(--tl);}
 .gw{display:flex;flex-direction:column;align-items:center;}
 .gv{font-size:26px;font-weight:800;margin-top:4px;}
+.spin{display:inline-block;animation:spin 1s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -161,42 +158,35 @@ tr:hover td{background:#FAFBFF;}
 
 <!-- RESUMO -->
 <div id="page-resumo" class="page active">
-  <div class="tb"><div><div class="tb-t">Resumo Geral</div><div class="tb-s">Dados reais do Mercado Livre</div></div>
-  <div class="tr"><span class="bdg" id="bdg">Carregando...</span><button class="btn bp" onclick="init()">↻ Atualizar</button></div></div>
+  <div class="tb">
+    <div><div class="tb-t">Resumo Geral</div><div class="tb-s">Dados reais do Mercado Livre</div></div>
+    <div class="tr"><span class="bdg" id="bdg">Carregando...</span><button class="btn bp" onclick="init()">↻ Atualizar</button></div>
+  </div>
   <div class="cnt">
     <div class="cr">
-      <div class="card"><div class="cl">Faturamento</div><div class="cv" id="k-fat">—</div><div class="cc">Mês atual</div></div>
+      <div class="card"><div class="cl">Faturamento</div><div class="cv" id="k-fat">—</div><div class="cc" id="k-fat-per">Mês atual</div></div>
       <div class="card"><div class="cl">Pedidos</div><div class="cv" id="k-ped">—</div><div class="cc">Mês atual</div></div>
       <div class="card"><div class="cl">Ticket Médio</div><div class="cv" id="k-tkt">—</div><div class="cc">Por pedido</div></div>
       <div class="card"><div class="cl">Produtos</div><div class="cv" id="k-prod">—</div><div class="cc up">No catálogo</div></div>
       <div class="card"><div class="cl">Reputação</div><div class="cv" style="color:var(--grn)">🟢</div><div class="cc up">Verde / Ótima</div></div>
     </div>
+
     <div class="chrow">
-      <div class="cc2" style="flex:1.2">
-        <div class="ct">Faturamento por Mês</div><div class="cs">Histórico 6 meses</div>
-        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-          <div class="dw">
-            <svg width="160" height="160" viewBox="0 0 180 180">
-              <circle cx="90" cy="90" r="70" fill="none" stroke="#F0F0F0" stroke-width="22"/>
-              <circle cx="90" cy="90" r="70" fill="none" stroke="#E87722" stroke-width="22" stroke-dasharray="60.6 379.4" stroke-dashoffset="-330" transform="rotate(-90 90 90)"/>
-              <circle cx="90" cy="90" r="70" fill="none" stroke="#F39C12" stroke-width="22" stroke-dasharray="65.6 374.4" stroke-dashoffset="-264.4" transform="rotate(-90 90 90)"/>
-              <circle cx="90" cy="90" r="70" fill="none" stroke="#27AE60" stroke-width="22" stroke-dasharray="77 363" stroke-dashoffset="-187.4" transform="rotate(-90 90 90)"/>
-              <circle cx="90" cy="90" r="70" fill="none" stroke="#2980B9" stroke-width="22" stroke-dasharray="88.4 351.6" stroke-dashoffset="-99" transform="rotate(-90 90 90)"/>
-              <circle cx="90" cy="90" r="70" fill="none" stroke="#8E44AD" stroke-width="22" stroke-dasharray="101.2 338.8" stroke-dashoffset="2.2" transform="rotate(-90 90 90)"/>
-              <circle cx="90" cy="90" r="70" fill="none" stroke="#E74C3C" stroke-width="22" stroke-dasharray="47 393" stroke-dashoffset="103.4" transform="rotate(-90 90 90)"/>
-            </svg>
-            <div class="dc"><div class="db">R$61,7k</div><div class="ds">6 meses</div></div>
+      <!-- DONUT HISTÓRICO REAL -->
+      <div class="cc2" style="flex:1.3">
+        <div class="ct">Faturamento por Mês — Dados Reais</div>
+        <div class="cs" id="hist-sub">⏳ Buscando histórico do Mercado Livre...</div>
+        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap" id="hist-wrap">
+          <div style="display:flex;align-items:center;justify-content:center;width:160px;height:160px;">
+            <span class="spin" style="font-size:32px">⏳</span>
           </div>
-          <div style="display:flex;flex-direction:column;gap:7px;font-size:12px">
-            <div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:50%;background:#E87722;display:inline-block"></span><span style="color:var(--tm)">Out/25</span><strong style="margin-left:6px">R$8.500</strong></div>
-            <div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:50%;background:#F39C12;display:inline-block"></span><span style="color:var(--tm)">Nov/25</span><strong style="margin-left:6px">R$9.200</strong></div>
-            <div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:50%;background:#27AE60;display:inline-block"></span><span style="color:var(--tm)">Dez/25</span><strong style="margin-left:6px">R$10.800</strong></div>
-            <div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:50%;background:#2980B9;display:inline-block"></span><span style="color:var(--tm)">Jan/26</span><strong style="margin-left:6px">R$12.400</strong></div>
-            <div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:50%;background:#8E44AD;display:inline-block"></span><span style="color:var(--tm)">Fev/26</span><strong style="margin-left:6px">R$14.200</strong></div>
-            <div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:50%;background:#E74C3C;display:inline-block"></span><span style="color:var(--tm)">Mar/26</span><strong style="margin-left:6px" id="mar-v">—</strong></div>
+          <div id="hist-legend" style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--tl)">
+            Carregando histórico real...
           </div>
         </div>
       </div>
+
+      <!-- TACOS GAUGE -->
       <div class="cc2" style="flex:0.8">
         <div class="ct">TACOS</div><div class="cs">Total Advertising Cost of Sale</div>
         <div class="gw">
@@ -207,14 +197,19 @@ tr:hover td{background:#FAFBFF;}
             <text x="22" y="118" font-size="9" fill="#27AE60" font-weight="700">0%</text>
             <text x="90" y="22" font-size="9" fill="#888" text-anchor="middle">5%</text>
             <text x="174" y="118" font-size="9" fill="#F39C12" font-weight="700">10%</text>
-            <line x1="100" y1="108" x2="103" y2="32" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="100" y1="108" x2="103" y2="32" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round" id="needle-line"/>
             <circle cx="100" cy="108" r="6" fill="#1A1A1A"/>
             <circle cx="100" cy="108" r="3" fill="white"/>
           </svg>
-          <div class="gv" style="color:var(--amb)">5,1%</div>
-          <div style="font-size:11px;color:var(--tl)">⚠️ Limite da zona verde</div>
+          <div class="gv" id="tacos-val" style="color:var(--grn)">—</div>
+          <div style="font-size:11px;color:var(--tl)" id="tacos-desc">Calculando...</div>
+          <div style="display:flex;gap:16px;margin-top:10px">
+            <div style="text-align:center"><div style="font-size:10px;color:var(--tl)">Faturamento</div><div style="font-size:13px;font-weight:700" id="tacos-fat">—</div></div>
+          </div>
         </div>
       </div>
+
+      <!-- PERFORMANCE -->
       <div class="cc2" style="flex:0.8">
         <div class="ct">Performance da Loja</div><div class="cs">Métricas principais</div>
         <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px">
@@ -224,10 +219,11 @@ tr:hover td{background:#FAFBFF;}
         </div>
       </div>
     </div>
+
     <div class="tc">
       <div class="th"><span class="tt">📦 Pedidos Recentes — Dados Reais ML</span><button class="btn bo" onclick="showPage('vendas')">Ver todos →</button></div>
       <table><thead><tr><th>#Pedido</th><th>Produto</th><th>Comprador</th><th>Valor</th><th>Data</th><th>Status</th></tr></thead>
-      <tbody id="t-res"><tr><td colspan="6" class="lod">⏳ Buscando dados do Mercado Livre...</td></tr></tbody></table>
+      <tbody id="t-res"><tr><td colspan="6" class="lod">⏳ Carregando...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -269,44 +265,37 @@ tr:hover td{background:#FAFBFF;}
 
 <!-- ADS -->
 <div id="page-ads" class="page">
-  <div class="tb"><div><div class="tb-t">Campanhas / ADS</div><div class="tb-s">Product Ads · Mercado Livre</div></div><div class="tr"><span class="bdg">TACOS: 5,1%</span></div></div>
+  <div class="tb"><div><div class="tb-t">Campanhas / ADS</div><div class="tb-s">Product Ads · Mercado Livre</div></div><div class="tr"><span class="bdg" id="tacos-badge">TACOS: —</span></div></div>
   <div class="cnt">
     <div class="cr">
-      <div class="card"><div class="cl">Gasto ADS</div><div class="cv">R$3.147</div><div class="cc">Mês atual</div></div>
-      <div class="card"><div class="cl">Vendas via ADS</div><div class="cv">R$22.400</div><div class="cc up">36% do total</div></div>
-      <div class="card"><div class="cl">ROAS</div><div class="cv" style="color:var(--grn)">7,1x</div><div class="cc up">Ótimo</div></div>
-      <div class="card"><div class="cl">CPC Médio</div><div class="cv">R$0,94</div><div class="cc">Estável</div></div>
+      <div class="card"><div class="cl">TACOS</div><div class="cv" id="ads-tacos">—</div><div class="cc">% do faturamento</div></div>
+      <div class="card"><div class="cl">Faturamento</div><div class="cv" id="ads-fat">—</div><div class="cc">Período atual</div></div>
+      <div class="card"><div class="cl">Pedidos</div><div class="cv" id="ads-ped">—</div><div class="cc">Confirmados</div></div>
     </div>
-    <div class="al aw"><span>⚠️</span><span>TACOS em <strong>5,1%</strong> — limite da zona verde. Monitore para não ultrapassar 10%.</span></div>
-    <div class="tc"><div class="th"><span class="tt">Campanhas Ativas</span></div>
-    <table><thead><tr><th>Campanha</th><th>Gasto</th><th>Impressões</th><th>ROAS</th><th>Status</th></tr></thead>
-    <tbody>
-      <tr><td>Kit Suporte Monitor</td><td>R$1.240</td><td>72.000</td><td>8,2x</td><td><span class="p pg">Ativa</span></td></tr>
-      <tr><td>Cabo USB-C</td><td>R$840</td><td>58.000</td><td>7,8x</td><td><span class="p pg">Ativa</span></td></tr>
-      <tr><td>Hub USB 7 Portas</td><td>R$620</td><td>34.000</td><td>6,4x</td><td><span class="p pg">Ativa</span></td></tr>
-      <tr><td>Mousepad XL</td><td>R$447</td><td>20.000</td><td>5,1x</td><td><span class="p pa">Pausada</span></td></tr>
-    </tbody></table></div>
+    <div class="al aw" id="ads-alert" style="display:none"><span>⚠️</span><span id="ads-alert-txt"></span></div>
+    <div class="tc"><div class="th"><span class="tt">Histórico Mensal Real</span></div>
+    <table><thead><tr><th>Mês</th><th>Faturamento</th><th>Pedidos</th><th>Ticket Médio</th></tr></thead>
+    <tbody id="t-hist"><tr><td colspan="4" class="lod">⏳ Carregando histórico...</td></tr></tbody></table></div>
   </div>
 </div>
 
 <!-- MARGEM -->
 <div id="page-margem" class="page">
-  <div class="tb"><div><div class="tb-t">Margem pós-ADS</div><div class="tb-s">Lucratividade real</div></div></div>
+  <div class="tb"><div><div class="tb-t">Margem pós-ADS</div><div class="tb-s">Lucratividade real estimada</div></div></div>
   <div class="cnt">
     <div class="cr">
-      <div class="card"><div class="cl">Faturamento Bruto</div><div class="cv">R$61.700</div><div class="cc">6 meses</div></div>
-      <div class="card"><div class="cl">Custo ADS</div><div class="cv" style="color:var(--red)">−R$3.147</div><div class="cc dn">5,1%</div></div>
-      <div class="card"><div class="cl">Taxas ML 12%</div><div class="cv" style="color:var(--red)">−R$7.404</div><div class="cc dn">Plataforma</div></div>
-      <div class="card"><div class="cl">CMV 35%</div><div class="cv" style="color:var(--red)">−R$21.595</div><div class="cc dn">Produto</div></div>
-      <div class="card"><div class="cl">Lucro Líquido</div><div class="cv" style="color:var(--grn)">R$29.554</div><div class="cc up">Margem 47,9%</div></div>
+      <div class="card"><div class="cl">Faturamento Total</div><div class="cv" id="mg-fat">—</div><div class="cc">6 meses reais</div></div>
+      <div class="card"><div class="cl">Taxas ML ~12%</div><div class="cv" id="mg-taxas" style="color:var(--red)">—</div><div class="cc dn">Estimado</div></div>
+      <div class="card"><div class="cl">CMV ~35%</div><div class="cv" id="mg-cmv" style="color:var(--red)">—</div><div class="cc dn">Estimado</div></div>
+      <div class="card"><div class="cl">Lucro Estimado</div><div class="cv" id="mg-lucro" style="color:var(--grn)">—</div><div class="cc up">~53% de margem</div></div>
     </div>
-    <div class="cc2"><div class="ct">Composição da Margem</div><div class="cs">% do faturamento</div>
+    <div class="cc2"><div class="ct">Composição da Margem</div><div class="cs">Estimativa baseada nos seus dados reais</div>
       <div style="display:flex;flex-direction:column;gap:12px;margin-top:6px">
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span style="color:var(--grn);font-weight:700">Lucro Líquido</span><span>47,9%</span></div><div class="pb2"><div class="pf" style="width:47.9%;background:var(--grn)"></div></div></div>
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span style="color:var(--amb);font-weight:700">CMV</span><span>35,0%</span></div><div class="pb2"><div class="pf" style="width:35%;background:var(--amb)"></div></div></div>
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span style="color:var(--red);font-weight:700">Taxas ML</span><span>12,0%</span></div><div class="pb2"><div class="pf" style="width:12%;background:var(--red)"></div></div></div>
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span style="color:#E74C3C;font-weight:700">ADS</span><span>5,1%</span></div><div class="pb2"><div class="pf" style="width:5.1%;background:#E74C3C"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span style="color:var(--grn);font-weight:700">Lucro Líquido</span><span>~53%</span></div><div class="pb2"><div class="pf" style="width:53%;background:var(--grn)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span style="color:var(--amb);font-weight:700">CMV (produto)</span><span>~35%</span></div><div class="pb2"><div class="pf" style="width:35%;background:var(--amb)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span style="color:var(--red);font-weight:700">Taxas ML</span><span>~12%</span></div><div class="pb2"><div class="pf" style="width:12%;background:var(--red)"></div></div></div>
       </div>
+      <p style="font-size:11px;color:var(--tl);margin-top:14px">💡 Os percentuais de CMV e taxas são estimativas. Para maior precisão, ajuste conforme seus custos reais.</p>
     </div>
   </div>
 </div>
@@ -315,17 +304,12 @@ tr:hover td{background:#FAFBFF;}
 <div id="page-ranqueamento" class="page">
   <div class="tb"><div><div class="tb-t">Ranqueamento</div><div class="tb-s">Posição no Mercado Livre</div></div></div>
   <div class="cnt">
-    <div class="cr">
-      <div class="card"><div class="cl">Top 3</div><div class="cv" style="color:var(--grn)">6</div><div class="cc up">Produtos</div></div>
-      <div class="card"><div class="cl">Página 1</div><div class="cv">11</div><div class="cc up">Top 10</div></div>
-      <div class="card"><div class="cl">Posição Média</div><div class="cv">4,2</div><div class="cc up">Melhora</div></div>
-    </div>
     <div class="cc2"><div class="ct">Fatores de Ranqueamento</div><div class="cs">Impacto no posicionamento</div>
       <div style="display:flex;flex-direction:column;gap:12px;margin-top:6px">
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Reputação</span><span style="color:var(--grn);font-weight:700">97%</span></div><div class="pb2"><div class="pf" style="width:97%;background:var(--grn)"></div></div></div>
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Velocidade de envio</span><span style="color:var(--grn);font-weight:700">94%</span></div><div class="pb2"><div class="pf" style="width:94%;background:var(--grn)"></div></div></div>
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Taxa de conversão</span><span style="color:var(--amb);font-weight:700">3,2%</span></div><div class="pb2"><div class="pf" style="width:32%;background:var(--amb)"></div></div></div>
-        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Qualidade dos títulos</span><span style="color:var(--blu);font-weight:700">78%</span></div><div class="pb2"><div class="pf" style="width:78%;background:var(--blu)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Reputação</span><span style="color:var(--grn);font-weight:700">Verde ✅</span></div><div class="pb2"><div class="pf" style="width:97%;background:var(--grn)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Velocidade de envio</span><span style="color:var(--grn);font-weight:700">Excelente</span></div><div class="pb2"><div class="pf" style="width:90%;background:var(--grn)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Qualidade dos títulos</span><span style="color:var(--amb);font-weight:700">Melhorar</span></div><div class="pb2"><div class="pf" style="width:65%;background:var(--amb)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span>Fotos profissionais</span><span style="color:var(--amb);font-weight:700">Melhorar</span></div><div class="pb2"><div class="pf" style="width:60%;background:var(--amb)"></div></div></div>
       </div>
     </div>
   </div>
@@ -345,8 +329,8 @@ tr:hover td{background:#FAFBFF;}
       </div>
       <div class="cc2"><div class="ct">🎯 Oportunidades</div><div class="cs">Alta demanda + baixa concorrência</div>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
-          <div style="background:var(--acc-l);border-radius:8px;padding:12px"><div style="font-size:13px;font-weight:700">Cabo USB4 Gen 3</div><div style="font-size:11px;color:var(--tm);margin-top:2px">12 vendedores · 8.400 buscas/mês</div><div style="display:flex;gap:6px;margin-top:6px"><span class="p pg">Alta demanda</span><span class="p pb">Baixa concorrência</span></div></div>
-          <div style="background:#F0FFF4;border-radius:8px;padding:12px"><div style="font-size:13px;font-weight:700">Carregador Wireless 30W</div><div style="font-size:11px;color:var(--tm);margin-top:2px">8 vendedores · 6.100 buscas/mês</div><div style="display:flex;gap:6px;margin-top:6px"><span class="p pg">Alta demanda</span><span class="p pg">Baixíssima concorrência</span></div></div>
+          <div style="background:var(--acc-l);border-radius:8px;padding:12px"><div style="font-size:13px;font-weight:700">Cabo USB4 Gen 3</div><div style="font-size:11px;color:var(--tm);margin-top:2px">12 vendedores · 8.400 buscas/mês</div></div>
+          <div style="background:#F0FFF4;border-radius:8px;padding:12px"><div style="font-size:13px;font-weight:700">Carregador Wireless 30W</div><div style="font-size:11px;color:var(--tm);margin-top:2px">8 vendedores · 6.100 buscas/mês</div></div>
         </div>
       </div>
     </div>
@@ -355,22 +339,17 @@ tr:hover td{background:#FAFBFF;}
 
 <!-- FINANCEIRO -->
 <div id="page-financeiro" class="page">
-  <div class="tb"><div><div class="tb-t">Financeiro</div><div class="tb-s">Repasses e fluxo de caixa</div></div></div>
+  <div class="tb"><div><div class="tb-t">Financeiro</div><div class="tb-s">Repasses e fluxo de caixa estimado</div></div></div>
   <div class="cnt">
     <div class="cr">
-      <div class="card"><div class="cl">A Receber</div><div class="cv" style="color:var(--grn)">R$4.280</div><div class="cc up">Próximos repasses</div></div>
-      <div class="card"><div class="cl">Próximo Repasse</div><div class="cv">R$2.140</div><div class="cc">22/03/2026</div></div>
-      <div class="card"><div class="cl">Taxas (mês)</div><div class="cv" style="color:var(--red)">R$792</div><div class="cc dn">12% das vendas</div></div>
-      <div class="card"><div class="cl">Total Recebido</div><div class="cv">R$54.296</div><div class="cc up">Acumulado</div></div>
+      <div class="card"><div class="cl">Faturamento Total</div><div class="cv" id="fin-fat">—</div><div class="cc">6 meses reais</div></div>
+      <div class="card"><div class="cl">Taxas ML (~12%)</div><div class="cv" id="fin-taxas" style="color:var(--red)">—</div><div class="cc dn">Estimado</div></div>
+      <div class="card"><div class="cl">Líquido estimado</div><div class="cv" id="fin-liq" style="color:var(--grn)">—</div><div class="cc up">Após taxas ML</div></div>
+      <div class="card"><div class="cl">Total Pedidos</div><div class="cv" id="fin-ped">—</div><div class="cc">6 meses</div></div>
     </div>
-    <div class="tc"><div class="th"><span class="tt">Histórico de Repasses</span></div>
-    <table><thead><tr><th>Data</th><th>Pedidos</th><th>Bruto</th><th>Taxas</th><th>Líquido</th><th>Status</th></tr></thead>
-    <tbody>
-      <tr><td>22/03/2026</td><td>14</td><td>R$2.520</td><td>−R$302</td><td><strong>R$2.140</strong></td><td><span class="p pb">Agendado</span></td></tr>
-      <tr><td>15/03/2026</td><td>21</td><td>R$3.780</td><td>−R$454</td><td><strong>R$3.209</strong></td><td><span class="p pg">Pago</span></td></tr>
-      <tr><td>08/03/2026</td><td>23</td><td>R$4.140</td><td>−R$497</td><td><strong>R$3.515</strong></td><td><span class="p pg">Pago</span></td></tr>
-      <tr><td>29/02/2026</td><td>19</td><td>R$3.420</td><td>−R$410</td><td><strong>R$2.904</strong></td><td><span class="p pg">Pago</span></td></tr>
-    </tbody></table></div>
+    <div class="tc"><div class="th"><span class="tt">Histórico Mensal Real</span></div>
+    <table><thead><tr><th>Mês</th><th>Faturamento</th><th>Pedidos</th><th>Taxas ML (est.)</th><th>Líquido (est.)</th></tr></thead>
+    <tbody id="t-fin"><tr><td colspan="5" class="lod">⏳ Carregando histórico...</td></tr></tbody></table></div>
   </div>
 </div>
 
@@ -378,7 +357,7 @@ tr:hover td{background:#FAFBFF;}
 <div id="page-integracoes" class="page">
   <div class="tb"><div><div class="tb-t">Integrações</div><div class="tb-s">Conexões externas</div></div></div>
   <div class="cnt">
-    <div class="al as" id="al-on" style="display:none"><span>✅</span><div><strong>Mercado Livre conectado!</strong> Dados atualizados automaticamente a cada 5 minutos.</div></div>
+    <div class="al as" id="al-on" style="display:none"><span>✅</span><div><strong>Mercado Livre conectado!</strong> Dados atualizados automaticamente.</div></div>
     <div class="al aw" id="al-off"><span>⚠️</span><div><strong>Mercado Livre desconectado.</strong><br><a href="/login" style="color:var(--acc);font-weight:700">Clique aqui para conectar</a></div></div>
     <div style="background:var(--card);border-radius:12px;border:1px solid var(--bdr);padding:20px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:14px">
@@ -402,7 +381,9 @@ tr:hover td{background:#FAFBFF;}
 
 </main>
 <script>
-var ok=false;
+var CORES=['#E87722','#F39C12','#27AE60','#2980B9','#8E44AD','#E74C3C','#16A085','#D35400'];
+var historicoGlobal=[];
+
 document.querySelectorAll('.ni').forEach(function(el){
   el.addEventListener('click',function(e){e.preventDefault();showPage(this.getAttribute('data-page'));});
 });
@@ -413,6 +394,7 @@ function showPage(n){
   var nav=document.querySelector('[data-page="'+n+'"]'); if(nav) nav.classList.add('active');
 }
 function fmt(n){n=parseFloat(n||0);if(n>=1000)return'R$ '+(n/1000).toFixed(1)+'k';return'R$ '+n.toFixed(2);}
+function fmt2(n){n=parseFloat(n||0);return'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function s(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
 function sh(id,h){var e=document.getElementById(id);if(e)e.innerHTML=h;}
 function pill(st){
@@ -421,12 +403,14 @@ function pill(st){
          'cancelled':'<span class="p pr">Cancelado</span>'};
   return m[st]||'<span class="p py">'+(st||'?')+'</span>';
 }
+
 function checkStatus(){
   fetch('/status').then(function(r){return r.json();}).then(function(d){
-    ok=d.authenticated; updateUI(d.authenticated,d.user_id);
-    if(d.authenticated){loadPedidos();loadProdutos();}
+    updateUI(d.authenticated,d.user_id);
+    if(d.authenticated){loadPedidos();loadProdutos();loadHistorico();}
   }).catch(function(){updateUI(false);});
 }
+
 function updateUI(on,uid){
   var now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   document.getElementById('dot').className='dot'+(on?' on':'');
@@ -442,37 +426,150 @@ function updateUI(on,uid){
   s('srv-st',on?'🟢 Online':'🔴 Offline');
   s('srv-uid',uid||'—'); s('srv-upd',now);
 }
+
+// ── HISTÓRICO REAL ───────────────────────────────────────────
+function loadHistorico(){
+  fetch('/api/historico').then(function(r){return r.json();}).then(function(data){
+    if(!data.meses||!data.meses.length){
+      s('hist-sub','Sem dados históricos disponíveis.');
+      return;
+    }
+    historicoGlobal=data.meses;
+    renderDonut(data.meses);
+    renderHistoricoTabelas(data.meses);
+    calcularMargem(data.meses);
+    calcularFinanceiro(data.meses);
+    calcularTACOS(data.meses);
+  }).catch(function(e){
+    s('hist-sub','Erro ao buscar histórico: '+e.message);
+  });
+}
+
+function renderDonut(meses){
+  var total=meses.reduce(function(a,m){return a+m.faturamento;},0);
+  if(total===0){s('hist-sub','Sem vendas no período.');return;}
+
+  var circ=2*Math.PI*70; // circunferência
+  var offset=0;
+  var svgCircles='';
+  var legend='';
+
+  meses.forEach(function(m,i){
+    var pct=m.faturamento/total;
+    var dash=pct*circ;
+    var cor=CORES[i%CORES.length];
+    // stroke-dashoffset começa do topo (rotação -90°)
+    svgCircles+='<circle cx="90" cy="90" r="70" fill="none" stroke="'+cor+'" stroke-width="22"'+
+      ' stroke-dasharray="'+dash.toFixed(1)+' '+(circ-dash).toFixed(1)+'"'+
+      ' stroke-dashoffset="'+(-(offset)).toFixed(1)+'"'+
+      ' transform="rotate(-90 90 90)"/>';
+    offset+=dash;
+    legend+='<div style="display:flex;align-items:center;gap:7px">'+
+      '<span style="width:10px;height:10px;border-radius:50%;background:'+cor+';display:inline-block;flex-shrink:0"></span>'+
+      '<span style="color:var(--tm)">'+m.label+'</span>'+
+      '<strong style="margin-left:6px">'+fmt2(m.faturamento)+'</strong>'+
+      '</div>';
+  });
+
+  var donutHTML='<div style="position:relative;display:inline-flex;align-items:center;justify-content:center">'+
+    '<svg width="160" height="160" viewBox="0 0 180 180">'+
+    '<circle cx="90" cy="90" r="70" fill="none" stroke="#F0F0F0" stroke-width="22"/>'+
+    svgCircles+'</svg>'+
+    '<div style="position:absolute;text-align:center">'+
+    '<div style="font-size:16px;font-weight:800">'+fmt(total)+'</div>'+
+    '<div style="font-size:10px;color:var(--tl)">'+meses.length+' meses</div>'+
+    '</div></div>';
+
+  sh('hist-wrap','<div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">'+
+    donutHTML+
+    '<div style="display:flex;flex-direction:column;gap:7px;font-size:12px">'+legend+'</div>'+
+    '</div>');
+  s('hist-sub','Dados reais dos últimos '+meses.length+' meses');
+}
+
+function renderHistoricoTabelas(meses){
+  var htmlHist=meses.map(function(m){
+    var tkt=m.pedidos>0?(m.faturamento/m.pedidos):0;
+    return'<tr><td>'+m.label+'</td><td>'+fmt2(m.faturamento)+'</td><td>'+m.pedidos+'</td><td>'+fmt2(tkt)+'</td></tr>';
+  }).join('');
+  sh('t-hist',htmlHist||'<tr><td colspan="4" class="lod">Sem dados</td></tr>');
+}
+
+function calcularMargem(meses){
+  var total=meses.reduce(function(a,m){return a+m.faturamento;},0);
+  var taxas=total*0.12;
+  var cmv=total*0.35;
+  var lucro=total-taxas-cmv;
+  s('mg-fat',fmt2(total));
+  s('mg-taxas','−'+fmt2(taxas));
+  s('mg-cmv','−'+fmt2(cmv));
+  s('mg-lucro',fmt2(lucro));
+}
+
+function calcularFinanceiro(meses){
+  var total=meses.reduce(function(a,m){return a+m.faturamento;},0);
+  var totalPed=meses.reduce(function(a,m){return a+m.pedidos;},0);
+  var taxas=total*0.12;
+  var liq=total-taxas;
+  s('fin-fat',fmt2(total));
+  s('fin-taxas','−'+fmt2(taxas));
+  s('fin-liq',fmt2(liq));
+  s('fin-ped',totalPed);
+
+  var htmlFin=meses.map(function(m){
+    var tx=m.faturamento*0.12;
+    var lq=m.faturamento-tx;
+    return'<tr><td>'+m.label+'</td><td>'+fmt2(m.faturamento)+'</td><td>'+m.pedidos+'</td><td>−'+fmt2(tx)+'</td><td>'+fmt2(lq)+'</td></tr>';
+  }).join('');
+  sh('t-fin',htmlFin||'<tr><td colspan="5" class="lod">Sem dados</td></tr>');
+}
+
+function calcularTACOS(meses){
+  var fat=meses.reduce(function(a,m){return a+m.faturamento;},0);
+  // TACOS estimado: sem dados reais de ADS, mostramos N/A
+  s('tacos-fat',fmt2(fat));
+  s('ads-fat',fmt2(fat));
+  var totalPed=meses.reduce(function(a,m){return a+m.pedidos;},0);
+  s('ads-ped',totalPed);
+
+  // Gauge sem dados de ADS
+  s('tacos-val','N/D');
+  s('tacos-desc','Conecte o Product Ads para ver');
+  s('ads-tacos','N/D');
+  s('tacos-badge','TACOS: N/D');
+}
+
 function loadPedidos(){
   fetch('/api/pedidos').then(function(r){return r.json();}).then(function(data){
     var res=data.results||[];
     var total=res.reduce(function(a,o){return a+parseFloat(o.total_amount||0);},0);
-    var ok2=res.filter(function(o){return['paid','delivered','confirmed'].indexOf(o.status)>-1;}).length;
+    var ok=res.filter(function(o){return['paid','delivered','confirmed'].indexOf(o.status)>-1;}).length;
     var can=res.filter(function(o){return o.status==='cancelled';}).length;
     var tkt=res.length?total/res.length:0;
-    s('k-fat',fmt(total)); s('k-ped',res.length); s('k-tkt','R$ '+tkt.toFixed(0));
-    s('v-ped',res.length); s('v-fat',fmt(total)); s('v-tkt','R$ '+tkt.toFixed(0));
-    s('v-ok',ok2); s('v-can',can);
-    s('mar-v',fmt(total));
+    s('k-fat',fmt2(total)); s('k-ped',res.length); s('k-tkt','R$ '+tkt.toFixed(0));
+    s('v-ped',res.length); s('v-fat',fmt2(total)); s('v-tkt','R$ '+tkt.toFixed(0));
+    s('v-ok',ok); s('v-can',can);
     s('perf-ped',res.length+' pedidos');
     var pb=document.getElementById('perf-pedb'); if(pb)pb.style.width=Math.min(100,res.length*5)+'%';
     if(!res.length){var msg='<tr><td colspan="6" class="lod">Nenhum pedido encontrado.</td></tr>';sh('t-res',msg);sh('t-ven',msg);return;}
     var html=res.map(function(p){
-      var title=p.order_items&&p.order_items[0]?p.order_items[0].item.title.substring(0,30)+'...':'—';
+      var title=p.order_items&&p.order_items[0]?p.order_items[0].item.title.substring(0,32)+'...':'—';
       var buyer=p.buyer?(p.buyer.nickname||p.buyer.first_name||'—'):'—';
-      var val=p.total_amount?fmt(p.total_amount):'—';
+      var val=p.total_amount?fmt2(p.total_amount):'—';
       var dt=p.date_created?p.date_created.substring(0,10):'—';
       return'<tr><td style="font-size:11px">#'+p.id+'</td><td>'+title+'</td><td>'+buyer+'</td><td>'+val+'</td><td>'+dt+'</td><td>'+pill(p.status)+'</td></tr>';
     }).join('');
     sh('t-res',html); sh('t-ven',html);
   }).catch(function(){});
 }
+
 function loadProdutos(){
   fetch('/api/produtos').then(function(r){return r.json();}).then(function(data){
     var ids=data.results||[];
     s('k-prod',ids.length); s('p-tot',ids.length); s('p-at',ids.length); s('p-pa',0); s('p-se',0);
     s('perf-p',ids.length+' produtos');
-    var pb=document.getElementById('perf-pb'); if(pb)pb.style.width=Math.min(100,ids.length*3.5)+'%';
-    if(!ids.length){sh('t-prod','<tr><td colspan="5" class="lod">Nenhum produto encontrado.</td></tr>');return;}
+    var pb=document.getElementById('perf-pb'); if(pb)pb.style.width=Math.min(100,ids.length*2)+'%';
+    if(!ids.length){sh('t-prod','<tr><td colspan="5" class="lod">Nenhum produto.</td></tr>');return;}
     Promise.all(ids.slice(0,15).map(function(id){
       return fetch('/api/produto/'+id).then(function(r){return r.json();}).catch(function(){return{id:id};});
     })).then(function(prods){
@@ -481,22 +578,21 @@ function loadProdutos(){
         var st=p.status==='active'?'<span class="p pg">Ativo</span>':p.status==='paused'?'<span class="p pa">Pausado</span>':'<span class="p py">'+(p.status||'?')+'</span>';
         if(p.status==='active')at++;else pa++;
         if(p.available_quantity===0)se++;
-        var preco=p.price?fmt(p.price):'—';
-        var esq=p.available_quantity!==undefined?p.available_quantity:'—';
-        var title=p.title?p.title.substring(0,38):p.id;
-        return'<tr><td>'+title+'</td><td style="font-size:11px;color:var(--tl)">'+p.id+'</td><td>'+preco+'</td><td>'+esq+'</td><td>'+st+'</td></tr>';
+        return'<tr><td>'+((p.title||p.id||'').substring(0,40))+'</td><td style="font-size:11px;color:var(--tl)">'+p.id+'</td><td>'+(p.price?fmt2(p.price):'—')+'</td><td>'+(p.available_quantity!==undefined?p.available_quantity:'—')+'</td><td>'+st+'</td></tr>';
       }).join('');
-      sh('t-prod',html);
-      s('p-at',at); s('p-pa',pa); s('p-se',se);
+      sh('t-prod',html); s('p-at',at); s('p-pa',pa); s('p-se',se);
     });
   }).catch(function(){});
 }
+
 function init(){checkStatus();}
 init();
 setInterval(init,300000);
 </script>
 </body>
 </html>"""
+
+# ── ROTAS ─────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -524,7 +620,11 @@ def callback():
     if not code: return "Erro: código não encontrado.", 400
     v = session.get("code_verifier")
     if not v: return redirect("/login")
-    r = requests.post(ML_TOKEN_URL, data={"grant_type":"authorization_code","client_id":CLIENT_ID,"client_secret":CLIENT_SECRET,"code":code,"redirect_uri":REDIRECT_URI,"code_verifier":v})
+    r = requests.post(ML_TOKEN_URL, data={
+        "grant_type":"authorization_code","client_id":CLIENT_ID,
+        "client_secret":CLIENT_SECRET,"code":code,
+        "redirect_uri":REDIRECT_URI,"code_verifier":v
+    })
     if r.status_code == 200:
         save_token(r.json()); session.pop("code_verifier", None); return redirect("/")
     return f"Erro: {r.text}", 400
@@ -533,6 +633,62 @@ def callback():
 def status():
     t = load_token()
     return cors({"authenticated": bool(t), "user_id": t.get("user_id") if t else None})
+
+@app.route("/api/historico")
+def api_historico():
+    """Busca faturamento real dos últimos 6 meses na API do ML"""
+    t = load_token()
+    if not t: return cors({"error": "not_authenticated"}, 401)
+
+    user_id = t.get("user_id")
+    hoje = datetime.now()
+    meses = []
+    nomes_pt = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+    for i in range(5, -1, -1):
+        # Calcula o mês
+        if hoje.month - i <= 0:
+            mes = hoje.month - i + 12
+            ano = hoje.year - 1
+        else:
+            mes = hoje.month - i
+            ano = hoje.year
+
+        ultimo_dia = monthrange(ano, mes)[1]
+        date_from = f"{ano}-{mes:02d}-01T00:00:00.000-03:00"
+        date_to   = f"{ano}-{mes:02d}-{ultimo_dia:02d}T23:59:59.000-03:00"
+        label     = f"{nomes_pt[mes-1]}/{str(ano)[-2:]}"
+
+        total_fat = 0
+        total_ped = 0
+        offset    = 0
+
+        # Pagina os resultados (ML retorna max 50 por vez)
+        while True:
+            url = (f"/orders/search?seller={user_id}"
+                   f"&order.date_created.from={date_from}"
+                   f"&order.date_created.to={date_to}"
+                   f"&order.status=paid"
+                   f"&limit=50&offset={offset}")
+            r = ml_get(url, t)
+            if r.status_code != 200:
+                break
+            data    = r.json()
+            results = data.get("results", [])
+            if not results:
+                break
+            for o in results:
+                total_fat += float(o.get("total_amount", 0))
+                total_ped += 1
+            paging = data.get("paging", {})
+            total_avail = paging.get("total", 0)
+            offset += 50
+            if offset >= total_avail or offset >= 200:  # max 200 por mês
+                break
+
+        meses.append({"label": label, "faturamento": round(total_fat, 2), "pedidos": total_ped, "mes": mes, "ano": ano})
+
+    return cors({"meses": meses})
 
 @app.route("/api/pedidos")
 def api_pedidos():
